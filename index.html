@@ -132,7 +132,6 @@ textarea#explainText:focus-visible{outline:2px solid var(--accent);outline-offse
             <label><input type="checkbox" id="cRiot">騒擾・集団行動等</label>
             <label><input type="checkbox" id="cTheft">盗難</label>
             <label><input type="checkbox" id="cBreak">破損・汚損</label>
-            <label><input type="checkbox" id="cQuake">地震保険</label>
           </div>
         </div>
         <div class="row">
@@ -144,8 +143,8 @@ textarea#explainText:focus-visible{outline:2px solid var(--accent);outline-offse
               <option value="franchise">損害額20万円以上で全額</option>
             </select>
           </label>
-          <label class="f" id="quakeSumWrap">地震保険金額<span class="unit"><input type="number" id="quakeSum" min="0" step="1"><span>万円</span></span></label>
         </div>
+        <p class="sub">地震保険はこのツールの対象外です。損害区分は保険会社の調査で認定されます。</p>
       </fieldset>
 
       <fieldset>
@@ -229,8 +228,8 @@ const $ = id => document.getElementById(id);
 const {SUBQ, BASE, SAMPLES, judge, explain, man} = window.FireJudge;
 const HINT = 'メール・手紙の本文に貼り付けて使えます。挨拶と署名は書き足してください。';
 
-const FIELDS = ['pStart','pEnd','tBuilding','tContents','cWind','cFlood','cWater','cImpact','cRiot','cTheft','cBreak','cQuake',
-  'sumIns','deduct','windMode','quakeSum','accDate','claimDate','object','cause','exIntent','exWear','exWar','loss'];
+const FIELDS = ['pStart','pEnd','tBuilding','tContents','cWind','cFlood','cWater','cImpact','cRiot','cTheft','cBreak',
+  'sumIns','deduct','windMode','accDate','claimDate','object','cause','exIntent','exWear','exWar','loss'];
 
 let subState = {};
 
@@ -280,14 +279,13 @@ function update(){
   if(lastVerdict && lastVerdict!==r.verdict){ void st.offsetWidth; st.classList.add('pop'); }
   lastVerdict = r.verdict;
   const firstNg = r.checks.find(x=>x.s==='ng');
-  $('vText').textContent = r.verdict==='ok' ? (r.isQuake?'地震保険の支払対象です':'保険金の支払対象です')
+  $('vText').textContent = r.verdict==='ok' ? '保険金の支払対象です'
     : r.verdict==='ng' ? `「${firstNg.t}」で支払対象外になります`
     : '追加の確認が必要です';
   const showPay = r.verdict!=='ng' && r.pay!=null;
   $('pay').hidden = !showPay;
   if(showPay){ $('payV').textContent = man(r.pay); $('payCalc').textContent = r.calc + (r.verdict==='warn'?'（確認事項が解決した場合）':''); }
   $('trace').innerHTML = r.checks.map(x=>`<li><span class="pill ${x.s}">${PILL[x.s]}</span><span class="t">${x.t}</span><span class="d">${x.d}</span></li>`).join('');
-  $('quakeSumWrap').hidden = !$('cQuake').checked;
 
   // お客様向けの説明文
   const ex = explain(inp, subState, r);

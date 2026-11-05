@@ -55,10 +55,20 @@ test('空き巣被害 → 要確認', () => {
   assert.equal(r.verdict, 'warn');
 });
 
-test('地震で外壁にひび → 有責、支払見込額 50万円', () => {
+test('地震で外壁にひび → 無責（火災保険では補償されない）', () => {
   const r = runSample('地震で外壁にひび');
-  assert.equal(r.verdict, 'ok');
-  assert.equal(r.pay, 50);
+  assert.equal(r.verdict, 'ng');
+  assert.equal(status(r, '補償範囲'), 'ng');
+  assert.equal(r.pay, null);
+});
+
+test('地震が原因の火災 → 無責、地震火災費用保険金の案内が入る', () => {
+  const { input } = sampleInput('台風で屋根瓦が飛散', { cause: 'fire' });
+  const r = judge(input, { qQuakeFire: 'y' });
+  assert.equal(r.verdict, 'ng');
+  const cov = r.checks.find(c => c.t === '補償範囲');
+  assert.equal(cov.s, 'ng');
+  assert.match(cov.d, /地震火災費用保険金/);
 });
 
 test('事故発生日が保険期間の外 → 無責（保険期間が不適合）', () => {
@@ -70,7 +80,7 @@ test('事故発生日が保険期間の外 → 無責（保険期間が不適合
 // ---- お客様向けの説明文 ----
 
 test('説明文（有責）: 「お支払い対象となる見込み」が入り、金額は入らない', () => {
-  for (const name of ['台風で屋根瓦が飛散', '地震で外壁にひび']) {
+  for (const name of ['台風で屋根瓦が飛散', '子どもがテレビを倒した']) {
     const ex = explainSample(name);
     assert.equal(ex.missing, false);
     assert.match(ex.text, /お支払い対象となる見込みです/);
@@ -103,4 +113,11 @@ test('説明文: 入力が不足しているときは作らない', () => {
   assert.equal(ex.text, '');
   const ex2 = explainSample('台風で屋根瓦が飛散', { loss: 0 });
   assert.equal(ex2.missing, true);
+});
+
+test('説明文（地震）: 火災保険では補償されないことと、地震保険の別途案内が入る', () => {
+  const ex = explainSample('地震で外壁にひび');
+  assert.match(ex.text, /お支払い対象とならない見込みです/);
+  assert.match(ex.text, /火災保険では補償されません/);
+  assert.match(ex.text, /地震保険について別途ご案内/);
 });

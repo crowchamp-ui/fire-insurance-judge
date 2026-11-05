@@ -9,7 +9,7 @@
     wind:{cov:'cWind',name:'風災・雹災・雪災'}, flood:{cov:'cFlood',name:'水災'}, water:{cov:'cWater',name:'水濡れ'},
     impact:{cov:'cImpact',name:'物体の落下・飛来・衝突'}, riot:{cov:'cRiot',name:'騒擾・集団行動等'},
     theft:{cov:'cTheft',name:'盗難'}, breakage:{cov:'cBreak',name:'破損・汚損'},
-    quake:{cov:'cQuake',name:'地震・噴火・津波'}, wear:{cov:null,name:'経年劣化'}
+    quake:{cov:null,name:'地震・噴火・津波'}, wear:{cov:null,name:'経年劣化'}
   };
 
   // 原因ごとの追加質問
@@ -23,19 +23,15 @@
     impact:[{id:'qImpactCar',type:'yn',text:'ぶつかったのは契約者・被保険者自身が運転する車両ですか？'}],
     riot:[], theft:[{id:'qPolice',type:'yn',text:'警察へ被害届を提出していますか？'}],
     breakage:[{id:'qCosmetic',type:'yn',text:'機能に支障のない外観上の損傷（すり傷・かき傷・塗装のはがれ等）だけですか？'}],
-    quake:[{id:'qQuakeGrade',type:'sel',text:'地震保険の損害区分（認定見込み）',opts:[
-      ['full','全損'],['major','大半損'],['minor','小半損'],['partial','一部損'],['none','一部損に満たない']]}],
-    wear:[]
+    quake:[], wear:[]
   };
-
-  const QUAKE_RATE = {full:[1,'全損 100%'],major:[.6,'大半損 60%'],minor:[.3,'小半損 30%'],partial:[.05,'一部損 5%'],none:[0,'']};
 
   const num = v => Math.max(0, parseFloat(v) || 0);
   const man = v => (Math.round(v*10)/10).toLocaleString('ja-JP') + '万円';
   const date = v => v ? new Date(v + 'T00:00:00') : null;
 
   // input: 入力欄と同じキーを持つオブジェクト。sub: 追加質問の回答（{qWindExt:'y'} など）
-  // 戻り値: {verdict:'ok'|'ng'|'warn', checks:[{t,s,d,c,miss}], pay, calc, isQuake}
+  // 戻り値: {verdict:'ok'|'ng'|'warn', checks:[{t,s,d,c,miss}], pay, calc}
   //   d: 窓口向けの説明 / c: お客様向けの文（不適合・要確認のとき） / miss: 入力不足
   function judge(input, sub) {
     const inp = Object.assign({cFire:true}, input), S = sub || {};
@@ -85,13 +81,15 @@
     if(c==='wear'){
       add('補償範囲','na','経年劣化はどの補償にも当たりません。');
     }else if(isQuake){
-      if(inp.cQuake) add('補償範囲','ok', quakeFire ? '地震等による火災は火災保険では免責ですが、地震保険で補償されます。' : '地震保険が付帯されています。');
-      else if(quakeFire) add('補償範囲','ng',
-        '地震・噴火・津波による火災は火災保険では免責で、地震保険も付帯されていません。半焼以上であれば地震火災費用保険金（保険金額の5%程度）が支払われる場合があります。',
-        '地震・噴火・津波を原因とする火災は火災保険では補償されず、ご契約に地震保険が付帯されていません。なお、損害の程度によっては地震火災費用保険金をお支払いできる場合がありますので、別途ご案内いたします。');
+      // 地震保険はこのツールの対象外。火災保険では補償されないことだけを判定する
+      const toQuake = '地震保険の加入状況を確認し、地震保険の窓口へご案内ください（地震保険はこのツールの対象外）。';
+      const custQuake = '地震保険にご加入の場合は、地震保険について別途ご案内いたします。';
+      if(c==='fire' && quakeFire) add('補償範囲','ng',
+        '地震・噴火・津波による火災は、火災保険では補償されません。半焼以上であれば地震火災費用保険金（保険金額の5%程度）が支払われる場合があります。'+toQuake,
+        '地震・噴火・津波を原因とする火災による損害は、火災保険では補償されません。なお、損害の程度によっては地震火災費用保険金をお支払いできる場合があります。'+custQuake);
       else add('補償範囲','ng',
-        '地震・噴火・津波による損害は火災保険では補償されず、地震保険も付帯されていません。',
-        '地震・噴火・津波による損害は火災保険では補償されず、ご契約に地震保険が付帯されていません。');
+        '地震・噴火・津波による損害は、火災保険では補償されません。'+toQuake,
+        '地震・噴火・津波を原因とする損害は、火災保険では補償されません。'+custQuake);
     }else{
       const on = !!inp[cause.cov];
       if(on) add('補償範囲','ok',`「${cause.name}」の補償が付帯されています。`);
@@ -135,23 +133,11 @@
       else if(yn('qCosmetic')==='n') crit('ok','機能に支障のある破損・汚損です。');
       else crit('warn','機能への支障の有無を確認する必要があります。',
         '損傷によって、機能に支障が出ているかどうか'); }
-    if(isQuake && inp.cQuake){ const g=yn('qQuakeGrade'); if(g==='none') crit('ng','一部損の基準に満たないため、地震保険は支払われません。',
-        '損害の程度が、地震保険のお支払い基準（一部損）に達していません。');
-      else if(g) crit('ok','損害区分は'+QUAKE_RATE[g][1].split(' ')[0]+'の見込みです。');
-      else crit('warn','損害区分（全損〜一部損）の認定が必要です。',
-        '地震保険の損害の程度（全損・大半損・小半損・一部損）の認定'); }
 
     // 7 自己負担額と支払額
     const loss = num(inp.loss), ded = num(inp.deduct), sum = num(inp.sumIns);
     let pay = null, calc = '';
-    if(isQuake){
-      const g = yn('qQuakeGrade'), qs = num(inp.quakeSum);
-      if(inp.cQuake && g && g!=='none'){
-        pay = qs*QUAKE_RATE[g][0]; calc = `地震保険金額 ${man(qs)} × ${QUAKE_RATE[g][1]}`;
-        if(qs>0) add('支払額の算定','ok','地震保険は損害区分に応じた定率で支払われ、免責金額はありません。');
-        else add('支払額の算定','warn','地震保険金額を入力してください。','',true);
-      }else add('支払額の算定','na','支払額は算定しません。');
-    }else if(c==='wear'){
+    if(isQuake || c==='wear'){
       add('支払額の算定','na','支払額は算定しません。');
     }else if(loss<=0){
       add('支払額の算定','warn','損害額を入力してください。','',true);
@@ -170,7 +156,7 @@
 
     const hasNg = checks.some(x=>x.s==='ng'), hasWarn = checks.some(x=>x.s==='warn');
     const verdict = hasNg ? 'ng' : hasWarn ? 'warn' : 'ok';
-    return {verdict, checks, pay, calc, isQuake};
+    return {verdict, checks, pay, calc};
   }
 
   // お客様向けの説明文（メール・手紙の本文。挨拶・署名・金額は入れない）
@@ -189,8 +175,7 @@
 
     if(r.verdict==='ok'){
       p2 = '現時点では、保険金のお支払い対象となる見込みです。';
-      p3 = r.isQuake ? 'ご契約の地震保険の対象となる損害と考えられます。'
-                     : `ご契約の「${cause.name}」の補償の対象となる事故と考えられます。`;
+      p3 = `ご契約の「${cause.name}」の補償の対象となる事故と考えられます。`;
       p4 += 'お支払い額につきましても、損害調査の結果により決まります。';
     }else if(r.verdict==='ng'){
       p2 = '誠に恐れ入りますが、現時点では、保険金のお支払い対象とならない見込みです。';
@@ -203,18 +188,18 @@
   }
 
   // 架空の事例（請求日は画面側で「今日」を入れる）
-  const BASE = {pStart:'2025-04-01',pEnd:'2030-04-01',tBuilding:true,tContents:true,cWind:true,cFlood:false,cWater:true,cImpact:true,cRiot:true,cTheft:true,cBreak:false,cQuake:false,
-    sumIns:2000,deduct:5,windMode:'deduct',quakeSum:1000,exIntent:false,exWear:false,exWar:false};
+  const BASE = {pStart:'2025-04-01',pEnd:'2030-04-01',tBuilding:true,tContents:true,cWind:true,cFlood:false,cWater:true,cImpact:true,cRiot:true,cTheft:true,cBreak:false,
+    sumIns:2000,deduct:5,windMode:'deduct',exIntent:false,exWear:false,exWar:false};
   const SAMPLES = [
     {name:'台風で屋根瓦が飛散', v:{accDate:'2026-09-20',object:'building',cause:'wind',loss:45}, s:{qWindExt:'y'}},
     {name:'古い屋根からの雨漏り', v:{accDate:'2026-10-02',object:'building',cause:'wind',loss:30,exWear:true}, s:{qWindExt:'n'}},
     {name:'豪雨で床下浸水', v:{accDate:'2026-07-10',object:'building',cause:'flood',loss:80,cFlood:true}, s:{qFlood:'none'}},
     {name:'子どもがテレビを倒した', v:{accDate:'2026-10-15',object:'contents',cause:'breakage',loss:12,cBreak:true}, s:{qCosmetic:'n'}},
     {name:'空き巣被害', v:{accDate:'2026-10-28',object:'contents',cause:'theft',loss:25}, s:{qPolice:''}},
-    {name:'地震で外壁にひび', v:{accDate:'2026-08-03',object:'building',cause:'quake',loss:120,cQuake:true}, s:{qQuakeGrade:'partial'}}
+    {name:'地震で外壁にひび', v:{accDate:'2026-08-03',object:'building',cause:'quake',loss:120}, s:{}}
   ];
 
-  const api = {CAUSES, SUBQ, QUAKE_RATE, BASE, SAMPLES, judge, explain, man};
+  const api = {CAUSES, SUBQ, BASE, SAMPLES, judge, explain, man};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FireJudge = api;
 })(typeof window !== 'undefined' ? window : globalThis);
