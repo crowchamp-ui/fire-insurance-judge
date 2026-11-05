@@ -87,6 +87,16 @@ ol.trace{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.ng{background:var(--ng-soft);color:var(--ng)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.na{background:var(--field);color:var(--muted)}
 .trace .t{font-weight:700;font-size:.9rem}.trace .d{font-size:.85rem;color:var(--muted);grid-column:2}
 .note{font-size:.78rem;color:var(--muted);margin:0;line-height:1.6}
+/* お客様向けの説明文 */
+.explain{border-top:1px solid var(--rule);padding-top:14px;display:grid;gap:8px}
+.explain-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.explain-head h2{margin:0;font-size:.8rem;color:var(--muted);letter-spacing:.12em;font-weight:500}
+.copy{font:inherit;font-size:.85rem;font-weight:700;color:var(--sheet);background:var(--accent);border:0;border-radius:4px;padding:5px 14px;cursor:pointer}
+.copy:disabled{opacity:.45;cursor:not-allowed}
+textarea#explainText{font:inherit;font-size:.88rem;line-height:1.75;color:var(--ink);background:var(--field);border:1px solid var(--rule);border-radius:4px;padding:10px 12px;width:100%;min-width:0;min-height:15em;resize:vertical}
+textarea#explainText:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.explain .hint{font-size:.78rem;color:var(--muted);margin:0;min-height:1.3em}
+.explain .hint.done{color:var(--ok);font-weight:700}
 </style>
 
 <div class="wrap">
@@ -199,6 +209,14 @@ ol.trace{list-style:none;margin:0;padding:0;display:grid;gap:8px}
         <span class="calc" id="payCalc"></span>
       </div>
       <ol class="trace" id="trace"></ol>
+      <section class="explain" aria-labelledby="explainTitle">
+        <div class="explain-head">
+          <h2 id="explainTitle">お客様向けの説明文</h2>
+          <button type="button" class="copy" id="copyBtn">説明文をコピー</button>
+        </div>
+        <textarea id="explainText" aria-labelledby="explainTitle"></textarea>
+        <p class="hint" id="copyHint">メール・手紙の本文に貼り付けて使えます。挨拶と署名は書き足してください。</p>
+      </section>
       <p class="note">一般的な住宅火災保険・住宅総合保険の約款を基にした目安です。実際の支払可否と金額は、ご契約の保険証券・約款と保険会社の損害調査によって決まります。臨時費用保険金・残存物取片づけ費用などの費用保険金は計算に含みません。</p>
     </aside>
   </div>
@@ -208,7 +226,8 @@ ol.trace{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 <script>
 // 画面の入力を集めて FireJudge.judge に渡し、結果を表示する
 const $ = id => document.getElementById(id);
-const {SUBQ, BASE, SAMPLES, judge, man} = window.FireJudge;
+const {SUBQ, BASE, SAMPLES, judge, explain, man} = window.FireJudge;
+const HINT = 'メール・手紙の本文に貼り付けて使えます。挨拶と署名は書き足してください。';
 
 const FIELDS = ['pStart','pEnd','tBuilding','tContents','cWind','cFlood','cWater','cImpact','cRiot','cTheft','cBreak','cQuake',
   'sumIns','deduct','windMode','quakeSum','accDate','claimDate','object','cause','exIntent','exWear','exWar','loss'];
@@ -254,7 +273,8 @@ let lastVerdict = null;
 
 function update(){
   readSub();
-  const r = judge(readInput(), subState);
+  const inp = readInput();
+  const r = judge(inp, subState);
   const st = $('stamp');
   st.textContent = LABEL[r.verdict]; st.className = 'stamp ' + r.verdict;
   if(lastVerdict && lastVerdict!==r.verdict){ void st.offsetWidth; st.classList.add('pop'); }
@@ -268,7 +288,25 @@ function update(){
   if(showPay){ $('payV').textContent = man(r.pay); $('payCalc').textContent = r.calc + (r.verdict==='warn'?'（確認事項が解決した場合）':''); }
   $('trace').innerHTML = r.checks.map(x=>`<li><span class="pill ${x.s}">${PILL[x.s]}</span><span class="t">${x.t}</span><span class="d">${x.d}</span></li>`).join('');
   $('quakeSumWrap').hidden = !$('cQuake').checked;
+
+  // お客様向けの説明文
+  const ex = explain(inp, subState, r);
+  $('explainText').value = ex.text;
+  $('explainText').placeholder = ex.missing ? '入力が不足しています。事故発生日・請求日・保険期間・損害額を入力すると、説明文を作成します。' : '';
+  $('copyBtn').disabled = ex.missing;
+  const h = $('copyHint'); h.textContent = HINT; h.classList.remove('done');
 }
+
+// 説明文のコピー（できない環境では全選択して手でコピーしてもらう）
+$('copyBtn').addEventListener('click', ()=>{
+  const ta = $('explainText'), h = $('copyHint');
+  const done = ()=>{ h.textContent = 'コピーしました。メールや手紙の本文に貼り付けてください。'; h.classList.add('done'); };
+  const fallback = ()=>{ ta.focus(); ta.select(); h.classList.remove('done');
+    h.textContent = '自動でコピーできませんでした。文を選択したので、Ctrl＋C（Mac は ⌘＋C）でコピーしてください。'; };
+  try{
+    navigator.clipboard.writeText(ta.value).then(done, fallback);
+  }catch(e){ fallback(); }
+});
 
 // 事例の読み込み（請求日は今日）
 const iso = d=>d.toISOString().slice(0,10);

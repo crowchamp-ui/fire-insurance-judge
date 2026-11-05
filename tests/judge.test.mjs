@@ -5,16 +5,23 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { judge, BASE, SAMPLES } = require('../js/judge.js');
+const { judge, explain, BASE, SAMPLES } = require('../js/judge.js');
 
 // 請求日を固定して、いつ実行しても同じ結果になるようにする
 const CLAIM_DATE = '2026-11-05';
 
-function runSample(name, override = {}) {
+function sampleInput(name, override = {}) {
   const sm = SAMPLES.find(s => s.name === name);
   assert.ok(sm, `事例「${name}」が見つかりません`);
-  const input = Object.assign({}, BASE, { claimDate: CLAIM_DATE }, sm.v, override);
-  return judge(input, sm.s);
+  return { input: Object.assign({}, BASE, { claimDate: CLAIM_DATE }, sm.v, override), sub: sm.s };
+}
+function runSample(name, override = {}) {
+  const { input, sub } = sampleInput(name, override);
+  return judge(input, sub);
+}
+function explainSample(name, override = {}) {
+  const { input, sub } = sampleInput(name, override);
+  return explain(input, sub);
 }
 const status = (r, title) => r.checks.find(c => c.t === title)?.s;
 
@@ -52,4 +59,42 @@ test('事故発生日が保険期間の外 → 無責（保険期間が不適合
   const r = runSample('台風で屋根瓦が飛散', { accDate: '2024-12-01' });
   assert.equal(r.verdict, 'ng');
   assert.equal(status(r, '保険期間'), 'ng');
+});
+
+// ---- お客様向けの説明文 ----
+
+test('説明文（有責）: 「お支払い対象となる見込み」が入り、金額は入らない', () => {
+  for (const name of ['台風で屋根瓦が飛散', '地震で外壁にひび']) {
+    const ex = explainSample(name);
+    assert.equal(ex.missing, false);
+    assert.match(ex.text, /お支払い対象となる見込みです/);
+    assert.doesNotMatch(ex.text, /万円/, `${name} の説明文に金額が入っています`);
+  }
+});
+
+test('説明文（無責）: 不適合になった理由が入る', () => {
+  const ex = explainSample('古い屋根からの雨漏り');
+  assert.match(ex.text, /お支払い対象とならない見込みです/);
+  assert.match(ex.text, /経年劣化/);
+  assert.match(ex.text, /吹き込みや雨漏り/);
+});
+
+test('説明文（要確認）: 確認が必要な点が入る', () => {
+  const ex = explainSample('空き巣被害');
+  assert.match(ex.text, /確認したうえで/);
+  assert.match(ex.text, /警察への被害届/);
+});
+
+test('説明文: 事故の日付と、最終判断は保険会社であることが入る', () => {
+  const ex = explainSample('豪雨で床下浸水');
+  assert.match(ex.text, /2026年7月10日/);
+  assert.match(ex.text, /保険会社による損害調査の結果/);
+});
+
+test('説明文: 入力が不足しているときは作らない', () => {
+  const ex = explainSample('台風で屋根瓦が飛散', { accDate: '' });
+  assert.equal(ex.missing, true);
+  assert.equal(ex.text, '');
+  const ex2 = explainSample('台風で屋根瓦が飛散', { loss: 0 });
+  assert.equal(ex2.missing, true);
 });
