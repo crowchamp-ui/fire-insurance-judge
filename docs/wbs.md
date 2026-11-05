@@ -5,8 +5,8 @@
 ## 0. 準備
 
 - [x] 作品フォルダと docs を作る
-- [ ] Git で管理し、GitHub にプライベートリポジトリを作ってプッシュする
-- [ ] たたき台の HTML を `index.html` に名前を変える（GitHub Pages で開けるように）
+- [x] Git で管理し、GitHub にプライベートリポジトリを作ってプッシュする（crowchamp-ui/fire-insurance-judge）
+- [x] たたき台の HTML を `index.html` に名前を変える（GitHub Pages で開けるように）
 
 ## 1. 判定（Must）
 
