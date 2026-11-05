@@ -44,6 +44,12 @@ test('豪雨で床下浸水 → 無責（支払基準が不適合）', () => {
   assert.equal(status(r, '支払基準'), 'ng');
 });
 
+test('子どもがテレビを倒した → 有責、支払見込額 7万円', () => {
+  const r = runSample('子どもがテレビを倒した');
+  assert.equal(r.verdict, 'ok');
+  assert.equal(r.pay, 7);
+});
+
 test('空き巣被害 → 要確認', () => {
   const r = runSample('空き巣被害');
   assert.equal(r.verdict, 'warn');
