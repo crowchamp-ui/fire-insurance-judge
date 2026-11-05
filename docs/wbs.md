@@ -29,8 +29,8 @@
 
 ## 4. 公開（Should）
 
-- [ ] GitHub Pages で公開する
-- [ ] 公開前チェック（第6週 P34）を確かめる
+- [x] GitHub Pages で公開する（https://crowchamp-ui.github.io/fire-insurance-judge/）
+- [x] 公開前チェック（第6週 P34）を確かめる（結果は test.md）
 
 ## 5. あとで決める（Could）
 

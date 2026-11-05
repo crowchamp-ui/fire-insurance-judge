@@ -2,6 +2,8 @@
 
 背景と4階層は [課題仮説シート.md](課題仮説シート.md) を参照。
 
+公開URL：https://crowchamp-ui.github.io/fire-insurance-judge/（GitHub Pages。main ブランチにプッシュすると更新される）
+
 ## 1. 目的
 
 代理店・窓口の担当者が、事故の連絡を受けたその場で、有責・無責の見込みと理由をお客様に説明できるようにする。
