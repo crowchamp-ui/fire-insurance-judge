@@ -199,7 +199,51 @@
     {name:'地震で外壁にひび', v:{accDate:'2026-08-03',object:'building',cause:'quake',loss:120}, s:{}}
   ];
 
-  const api = {CAUSES, SUBQ, BASE, SAMPLES, judge, explain, man};
+  // ---- 利用ログ（成功の数字「案内の訂正件数」を数えるため。個人情報は記録しない） ----
+  const VERDICT_JA = {ok:'有責', ng:'無責', warn:'要確認'};
+  const pad = n => String(n).padStart(2,'0');
+  const stamp = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  // 入力と判定結果から記録1行を作る
+  function makeLogEntry(input, result, now) {
+    const d = now || new Date();
+    const r = result;
+    return {
+      id: d.getTime().toString(36) + Math.random().toString(36).slice(2, 7),
+      recordedAt: stamp(d),
+      accDate: input.accDate || '',
+      cause: (CAUSES[input.cause] || {}).name || '',
+      object: input.object==='building' ? '建物' : '家財',
+      verdict: VERDICT_JA[r.verdict],
+      pay: r.verdict!=='ng' && r.pay!=null ? r.pay : null,
+      final: ''
+    };
+  }
+
+  // 案内の訂正：有責↔無責の食い違いだけを「あり」とする。要確認は数えない
+  function correction(e) {
+    if(!e.final) return '未入力';
+    if(e.verdict==='要確認') return '対象外';
+    return e.verdict!==e.final ? 'あり' : 'なし';
+  }
+
+  function summarize(entries) {
+    return {
+      total: entries.length,
+      withFinal: entries.filter(e=>e.final).length,
+      corrections: entries.filter(e=>correction(e)==='あり').length
+    };
+  }
+
+  // Excel で文字化けしない CSV（BOM 付き UTF-8、CRLF 改行）
+  const LOG_COLUMNS = ['記録日時','事故発生日','事故の原因','損害を受けたもの','窓口の見込み','支払見込額（万円）','保険会社の最終判断','案内の訂正'];
+  function toCSV(entries) {
+    const q = v => { const s = v==null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+    const rows = entries.map(e => [e.recordedAt, e.accDate, e.cause, e.object, e.verdict, e.pay==null?'':e.pay, e.final||'未入力', correction(e)]);
+    return '﻿' + [LOG_COLUMNS, ...rows].map(r => r.map(q).join(',')).join('\r\n') + '\r\n';
+  }
+
+  const api = {CAUSES, SUBQ, BASE, SAMPLES, judge, explain, man, makeLogEntry, correction, summarize, toCSV, LOG_COLUMNS};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FireJudge = api;
 })(typeof window !== 'undefined' ? window : globalThis);

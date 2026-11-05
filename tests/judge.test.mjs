@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { judge, explain, BASE, SAMPLES } = require('../js/judge.js');
+const { judge, explain, BASE, SAMPLES, makeLogEntry, correction, summarize, toCSV, LOG_COLUMNS } = require('../js/judge.js');
 
 // 請求日を固定して、いつ実行しても同じ結果になるようにする
 const CLAIM_DATE = '2026-11-05';
@@ -120,4 +120,59 @@ test('説明文（地震）: 火災保険では補償されないことと、地
   assert.match(ex.text, /お支払い対象とならない見込みです/);
   assert.match(ex.text, /火災保険では補償されません/);
   assert.match(ex.text, /地震保険について別途ご案内/);
+});
+
+// ---- 利用ログ ----
+
+const NOW = new Date(2026, 10, 5, 14, 30); // 2026-11-05 14:30（ローカル時刻）
+function logOf(name, final = '') {
+  const { input, sub } = sampleInput(name);
+  return Object.assign(makeLogEntry(input, judge(input, sub), NOW), { final });
+}
+
+test('記録1行: 決めた項目だけが入り、個人情報の欄がない', () => {
+  const e = logOf('台風で屋根瓦が飛散');
+  assert.deepEqual(Object.keys(e).sort(),
+    ['accDate', 'cause', 'final', 'id', 'object', 'pay', 'recordedAt', 'verdict'].sort());
+  assert.equal(e.recordedAt, '2026-11-05 14:30');
+  assert.equal(e.accDate, '2026-09-20');
+  assert.equal(e.cause, '風災・雹災・雪災');
+  assert.equal(e.object, '建物');
+  assert.equal(e.verdict, '有責');
+  assert.equal(e.pay, 40);
+  assert.equal(e.final, '');
+});
+
+test('記録1行: 無責のときは支払見込額を入れない', () => {
+  assert.equal(logOf('豪雨で床下浸水').pay, null);
+});
+
+test('案内の訂正: 有責↔無責の食い違いだけ「あり」、要確認は「対象外」', () => {
+  assert.equal(correction(logOf('台風で屋根瓦が飛散', '無責')), 'あり');
+  assert.equal(correction(logOf('豪雨で床下浸水', '有責')), 'あり');
+  assert.equal(correction(logOf('台風で屋根瓦が飛散', '有責')), 'なし');
+  assert.equal(correction(logOf('空き巣被害', '無責')), '対象外');
+  assert.equal(correction(logOf('台風で屋根瓦が飛散', '')), '未入力');
+});
+
+test('集計: 記録件数・最終判断入力済み・訂正件数', () => {
+  const s = summarize([
+    logOf('台風で屋根瓦が飛散', '無責'),   // 訂正あり
+    logOf('豪雨で床下浸水', '無責'),       // なし
+    logOf('空き巣被害', '有責'),           // 対象外
+    logOf('子どもがテレビを倒した', ''),   // 未入力
+  ]);
+  assert.deepEqual(s, { total: 4, withFinal: 3, corrections: 1 });
+});
+
+test('CSV: BOM付き・見出し行・カンマを含む値が崩れない', () => {
+  const e1 = logOf('台風で屋根瓦が飛散', '無責');
+  const e2 = Object.assign(logOf('豪雨で床下浸水'), { cause: '水災,テスト"引用"' });
+  const csv = toCSV([e1, e2]);
+  assert.ok(csv.startsWith('﻿'));
+  const lines = csv.slice(1).trimEnd().split('\r\n');
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], LOG_COLUMNS.join(','));
+  assert.equal(lines[1], '2026-11-05 14:30,2026-09-20,風災・雹災・雪災,建物,有責,40,無責,あり');
+  assert.equal(lines[2], '2026-11-05 14:30,2026-07-10,"水災,テスト""引用""",建物,無責,,未入力,未入力');
 });
