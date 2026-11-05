@@ -1,0 +1,413 @@
+<title>火災保険 有責無責判定</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: 査定票。左に入力票（契約→事故→損害）、右に判定欄と朱印。狭い画面では縦積み */
+:root{
+  --paper:#f5f7f8; --sheet:#ffffff; --ink:#1d2a36; --muted:#5f6d78; --rule:#d5dde2;
+  --field:#f9fbfc; --accent:#28507a; --accent-soft:#e3ecf5;
+  --ok:#2c6e49; --ok-soft:#e2f1e8; --ng:#c0392b; --ng-soft:#fbe7e4; --warn:#9a6a00; --warn-soft:#fbf1d9;
+  --stamp-ok:#28507a; --stamp-ng:#d23a24; --stamp-warn:#b07800;
+  --f-display:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Consolas",monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#11171d; --sheet:#18212a; --ink:#e3e9ee; --muted:#9aa8b3; --rule:#2c3944;
+  --field:#1d2731; --accent:#8cb4de; --accent-soft:#22344a;
+  --ok:#7fcf9f; --ok-soft:#1b3326; --ng:#ff8a78; --ng-soft:#3a1f1c; --warn:#e8bf5c; --warn-soft:#382d14;
+  --stamp-ok:#8cb4de; --stamp-ng:#ff6f5a; --stamp-warn:#e8bf5c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#11171d; --sheet:#18212a; --ink:#e3e9ee; --muted:#9aa8b3; --rule:#2c3944;
+  --field:#1d2731; --accent:#8cb4de; --accent-soft:#22344a;
+  --ok:#7fcf9f; --ok-soft:#1b3326; --ng:#ff8a78; --ng-soft:#3a1f1c; --warn:#e8bf5c; --warn-soft:#382d14;
+  --stamp-ok:#8cb4de; --stamp-ng:#ff6f5a; --stamp-warn:#e8bf5c; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.7;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;gap:20px}
+header{display:grid;gap:6px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.6rem,3.2vw,2.2rem);line-height:1.3;margin:0;text-wrap:balance;letter-spacing:.04em}
+.lede{color:var(--muted);margin:0;max-width:62ch}
+.samples{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.samples span{font-size:.8rem;color:var(--muted);letter-spacing:.08em}
+.chip{font:inherit;font-size:.85rem;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,400px);gap:20px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:6px}
+form.sheet{display:grid}
+fieldset{border:0;margin:0;padding:20px 22px;display:grid;gap:14px;border-top:1px solid var(--rule)}
+fieldset:first-child{border-top:0}
+legend{float:left;width:100%;padding:0;font-family:var(--f-display);font-weight:600;font-size:1.1rem;display:flex;gap:10px;align-items:baseline}
+legend b{font-family:var(--f-mono);font-size:.75rem;color:var(--accent);font-weight:500;letter-spacing:.1em}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 16px}
+label.f{display:grid;gap:4px;font-size:.85rem;color:var(--muted);min-width:0}
+input[type=date],input[type=number],select{font:inherit;font-size:.95rem;color:var(--ink);background:var(--field);border:1px solid var(--rule);border-radius:4px;padding:6px 10px;width:100%;min-width:0}
+input[type=number]{font-family:var(--f-mono);text-align:right}
+.unit{display:flex;align-items:center;gap:6px}.unit span{color:var(--muted);font-size:.85rem;white-space:nowrap}
+.checks{display:flex;flex-wrap:wrap;gap:6px 18px}
+.checks label,.yn label{display:flex;align-items:center;gap:6px;font-size:.92rem;cursor:pointer}
+.checks input,.yn input{accent-color:var(--accent);width:16px;height:16px}
+.sub{font-size:.85rem;color:var(--muted);margin:0}
+.q{background:var(--accent-soft);border-radius:4px;padding:12px 14px;display:grid;gap:8px}
+.q p{margin:0;font-size:.92rem}
+.yn{display:flex;gap:18px;flex-wrap:wrap}
+.excl{display:grid;gap:6px}
+
+/* 判定欄 */
+aside.sheet{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);padding:20px 22px;display:grid;gap:16px}
+@media (max-width:900px){aside.sheet{position:static}}
+.verdict{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.verdict h2{margin:0;font-size:.8rem;color:var(--muted);letter-spacing:.12em;font-weight:500}
+.verdict .what{font-size:.95rem;margin-top:2px}
+.stamp{flex:none;width:104px;height:104px;border-radius:50%;border:4px solid currentColor;display:grid;place-items:center;
+  font-family:var(--f-display);font-weight:800;font-size:1.9rem;letter-spacing:.06em;transform:rotate(-8deg);
+  box-shadow:inset 0 0 0 3px var(--sheet),inset 0 0 0 5px currentColor}
+.stamp.ok{color:var(--stamp-ok)}.stamp.ng{color:var(--stamp-ng)}.stamp.warn{color:var(--stamp-warn);font-size:1.5rem}
+@media (prefers-reduced-motion:no-preference){.stamp.pop{animation:pop .28s ease-out}}
+@keyframes pop{from{transform:rotate(-8deg) scale(1.25);opacity:.4}to{transform:rotate(-8deg) scale(1);opacity:1}}
+.pay{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:10px 0;display:grid;gap:2px}
+.pay .k{font-size:.8rem;color:var(--muted);letter-spacing:.08em}
+.pay .v{font-family:var(--f-mono);font-size:1.6rem;font-variant-numeric:tabular-nums}
+.pay .calc{font-size:.82rem;color:var(--muted)}
+ol.trace{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.trace li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;align-items:start}
+.pill{font-size:.72rem;font-weight:700;border-radius:3px;padding:1px 7px;margin-top:3px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.ng{background:var(--ng-soft);color:var(--ng)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.na{background:var(--field);color:var(--muted)}
+.trace .t{font-weight:700;font-size:.9rem}.trace .d{font-size:.85rem;color:var(--muted);grid-column:2}
+.note{font-size:.78rem;color:var(--muted);margin:0;line-height:1.6}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>火災保険 有責・無責 判定シート</h1>
+    <p class="lede">契約内容と事故の状況を入力すると、一般的な住宅向け火災保険の約款に沿って、保険金支払いの対象（有責）か対象外（無責）かを判定します。</p>
+    <div class="samples" id="samples"><span>事例を読み込む</span></div>
+  </header>
+
+  <div class="grid">
+    <form class="sheet" id="f" autocomplete="off">
+      <fieldset>
+        <legend><b>A</b>契約内容</legend>
+        <div class="row">
+          <label class="f">保険始期<input type="date" id="pStart"></label>
+          <label class="f">保険満期<input type="date" id="pEnd"></label>
+        </div>
+        <div>
+          <p class="sub">保険の対象</p>
+          <div class="checks">
+            <label><input type="checkbox" id="tBuilding">建物</label>
+            <label><input type="checkbox" id="tContents">家財</label>
+          </div>
+        </div>
+        <div>
+          <p class="sub">付帯している補償</p>
+          <div class="checks" id="covBox">
+            <label><input type="checkbox" id="cFire" checked disabled>火災・落雷・破裂爆発</label>
+            <label><input type="checkbox" id="cWind">風災・雹災・雪災</label>
+            <label><input type="checkbox" id="cFlood">水災</label>
+            <label><input type="checkbox" id="cWater">水濡れ</label>
+            <label><input type="checkbox" id="cImpact">物体の落下・飛来・衝突</label>
+            <label><input type="checkbox" id="cRiot">騒擾・集団行動等</label>
+            <label><input type="checkbox" id="cTheft">盗難</label>
+            <label><input type="checkbox" id="cBreak">破損・汚損</label>
+            <label><input type="checkbox" id="cQuake">地震保険</label>
+          </div>
+        </div>
+        <div class="row">
+          <label class="f">保険金額（対象物）<span class="unit"><input type="number" id="sumIns" min="0" step="1"><span>万円</span></span></label>
+          <label class="f">免責金額（自己負担額）<span class="unit"><input type="number" id="deduct" min="0" step="1"><span>万円</span></span></label>
+          <label class="f">風災の支払方式
+            <select id="windMode">
+              <option value="deduct">免責金額を差し引く</option>
+              <option value="franchise">損害額20万円以上で全額</option>
+            </select>
+          </label>
+          <label class="f" id="quakeSumWrap">地震保険金額<span class="unit"><input type="number" id="quakeSum" min="0" step="1"><span>万円</span></span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend><b>B</b>事故の内容</legend>
+        <div class="row">
+          <label class="f">事故発生日<input type="date" id="accDate"></label>
+          <label class="f">保険金請求日<input type="date" id="claimDate"></label>
+          <label class="f">損害を受けたもの
+            <select id="object">
+              <option value="building">建物</option>
+              <option value="contents">家財</option>
+            </select>
+          </label>
+        </div>
+        <label class="f">事故の原因
+          <select id="cause">
+            <option value="fire">火災</option>
+            <option value="lightning">落雷</option>
+            <option value="explosion">破裂・爆発（ガス漏れ等）</option>
+            <option value="wind">風災・雹災・雪災（台風・竜巻・大雪など）</option>
+            <option value="flood">水災（洪水・高潮・土砂崩れ）</option>
+            <option value="water">水濡れ（給排水設備の事故・上階からの漏水）</option>
+            <option value="impact">建物外部からの物体の落下・飛来・衝突</option>
+            <option value="riot">騒擾・集団行動等による暴力・破壊行為</option>
+            <option value="theft">盗難（盗難に伴う破損を含む）</option>
+            <option value="breakage">不測かつ突発的な事故（破損・汚損）</option>
+            <option value="quake">地震・噴火・津波</option>
+            <option value="wear">経年劣化・老朽化・自然の消耗</option>
+          </select>
+        </label>
+        <div id="subQ"></div>
+        <div class="excl">
+          <p class="sub">該当するものにチェック（免責事由）</p>
+          <div class="checks" style="flex-direction:column;gap:6px">
+            <label><input type="checkbox" id="exIntent">契約者・被保険者の故意、重大な過失、法令違反による損害</label>
+            <label><input type="checkbox" id="exWear">損害の主な原因が経年劣化・さび・腐食・虫食い・ネズミ食い</label>
+            <label><input type="checkbox" id="exWar">戦争・内乱・核燃料物質などによる損害</label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend><b>C</b>損害額</legend>
+        <div class="row">
+          <label class="f">損害額（修理費・再調達価額ベース）<span class="unit"><input type="number" id="loss" min="0" step="1"><span>万円</span></span></label>
+        </div>
+      </fieldset>
+    </form>
+
+    <aside class="sheet" aria-live="polite">
+      <div class="verdict">
+        <div>
+          <h2>判定</h2>
+          <div class="what" id="vText"></div>
+        </div>
+        <div class="stamp" id="stamp"></div>
+      </div>
+      <div class="pay" id="pay">
+        <span class="k">支払見込額</span>
+        <span class="v" id="payV"></span>
+        <span class="calc" id="payCalc"></span>
+      </div>
+      <ol class="trace" id="trace"></ol>
+      <p class="note">一般的な住宅火災保険・住宅総合保険の約款を基にした目安です。実際の支払可否と金額は、ご契約の保険証券・約款と保険会社の損害調査によって決まります。臨時費用保険金・残存物取片づけ費用などの費用保険金は計算に含みません。</p>
+    </aside>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const CAUSES = {
+  fire:{cov:'cFire',name:'火災'}, lightning:{cov:'cFire',name:'落雷'}, explosion:{cov:'cFire',name:'破裂・爆発'},
+  wind:{cov:'cWind',name:'風災・雹災・雪災'}, flood:{cov:'cFlood',name:'水災'}, water:{cov:'cWater',name:'水濡れ'},
+  impact:{cov:'cImpact',name:'物体の落下・飛来・衝突'}, riot:{cov:'cRiot',name:'騒擾・集団行動等'},
+  theft:{cov:'cTheft',name:'盗難'}, breakage:{cov:'cBreak',name:'破損・汚損'},
+  quake:{cov:'cQuake',name:'地震・噴火・津波'}, wear:{cov:null,name:'経年劣化'}
+};
+
+// 原因ごとの追加質問
+const SUBQ = {
+  fire:[{id:'qQuakeFire',type:'yn',text:'地震・噴火・津波が原因で起きた火災ですか？'}],
+  lightning:[], explosion:[{id:'qQuakeFire',type:'yn',text:'地震・噴火・津波が原因で起きた破裂・爆発ですか？'}],
+  wind:[{id:'qWindExt',type:'yn',text:'屋根・外壁・窓など建物の外側が、風・雹・雪で破損していますか？（外側に破損がなく、すき間から雨や雪が吹き込んだだけの場合は「いいえ」）'}],
+  flood:[{id:'qFlood',type:'sel',text:'浸水・損害の程度',opts:[
+    ['floor','床上浸水'],['45','地盤面から45cmを超える浸水'],['30','損害額が再調達価額の30%以上'],['none','いずれにも当たらない（床下浸水など）']]}],
+  water:[{id:'qWaterSelf',type:'yn',text:'損害は給排水設備そのもの（配管・給湯器など）の修理費だけですか？'}],
+  impact:[{id:'qImpactCar',type:'yn',text:'ぶつかったのは契約者・被保険者自身が運転する車両ですか？'}],
+  riot:[], theft:[{id:'qPolice',type:'yn',text:'警察へ被害届を提出していますか？'}],
+  breakage:[{id:'qCosmetic',type:'yn',text:'機能に支障のない外観上の損傷（すり傷・かき傷・塗装のはがれ等）だけですか？'}],
+  quake:[{id:'qQuakeGrade',type:'sel',text:'地震保険の損害区分（認定見込み）',opts:[
+    ['full','全損'],['major','大半損'],['minor','小半損'],['partial','一部損'],['none','一部損に満たない']]}],
+  wear:[]
+};
+const QUAKE_RATE = {full:[1,'全損 100%'],major:[.6,'大半損 60%'],minor:[.3,'小半損 30%'],partial:[.05,'一部損 5%'],none:[0,'']};
+
+let subState = {};
+
+function renderSubQ(){
+  const c = $('cause').value, box = $('subQ');
+  box.innerHTML = '';
+  (SUBQ[c]||[]).forEach(q=>{
+    const d = document.createElement('div'); d.className='q';
+    if(q.type==='yn'){
+      const v = subState[q.id] ?? '';
+      d.innerHTML = `<p>${q.text}</p><div class="yn">
+        <label><input type="radio" name="${q.id}" id="${q.id}_y" value="y" ${v==='y'?'checked':''}>はい</label>
+        <label><input type="radio" name="${q.id}" id="${q.id}_n" value="n" ${v==='n'?'checked':''}>いいえ</label>
+        <label><input type="radio" name="${q.id}" id="${q.id}_u" value="" ${v===''?'checked':''}>不明</label></div>`;
+    }else{
+      const v = subState[q.id] ?? '';
+      d.innerHTML = `<label class="f" style="color:var(--ink)">${q.text}<select id="${q.id}">
+        <option value="">不明・未確認</option>${q.opts.map(o=>`<option value="${o[0]}" ${v===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></label>`;
+    }
+    box.appendChild(d);
+  });
+}
+
+function readSub(){
+  (SUBQ[$('cause').value]||[]).forEach(q=>{
+    if(q.type==='yn'){ const r = document.querySelector(`input[name="${q.id}"]:checked`); subState[q.id] = r? r.value : ''; }
+    else subState[q.id] = $(q.id).value;
+  });
+}
+
+const num = id => Math.max(0, parseFloat($(id).value) || 0);
+const man = v => (Math.round(v*10)/10).toLocaleString('ja-JP') + '万円';
+const dt = id => $(id).value ? new Date($(id).value + 'T00:00:00') : null;
+
+function judge(){
+  const c = $('cause').value, cause = CAUSES[c], S = subState;
+  const checks = [];
+  const add = (t,s,d)=>checks.push({t,s,d});
+
+  // 1 請求期限
+  const acc = dt('accDate'), claim = dt('claimDate');
+  if(!acc || !claim) add('請求期限','warn','事故発生日と請求日を入力してください。');
+  else{
+    const lim = new Date(acc); lim.setFullYear(lim.getFullYear()+3);
+    if(claim < acc) add('請求期限','warn','請求日が事故発生日より前になっています。');
+    else if(claim > lim) add('請求期限','ng','事故から3年を過ぎており、保険金請求権が時効で消滅しています（保険法第95条）。');
+    else add('請求期限','ok','事故から3年以内の請求です。');
+  }
+
+  // 2 保険期間
+  const ps = dt('pStart'), pe = dt('pEnd');
+  if(!acc || !ps || !pe) add('保険期間','warn','保険期間と事故発生日を入力してください。');
+  else if(acc < ps || acc >= pe) add('保険期間','ng','事故発生日が保険期間の外です。');
+  else add('保険期間','ok','保険期間中の事故です。');
+
+  // 3 保険の対象
+  const obj = $('object').value, objName = obj==='building'?'建物':'家財';
+  const insured = obj==='building' ? $('tBuilding').checked : $('tContents').checked;
+  add('保険の対象', insured?'ok':'ng', insured ? `${objName}は保険の対象に含まれています。` : `${objName}は保険の対象に含まれていません。`);
+
+  // 4 免責事由
+  if($('exIntent').checked) add('免責事由','ng','故意・重大な過失・法令違反による損害は支払対象外です。');
+  else if($('exWar').checked) add('免責事由','ng','戦争・内乱・核燃料物質等による損害は支払対象外です。');
+  else if($('exWear').checked || c==='wear') add('免責事由','ng','経年劣化・さび・腐食・虫食い等による損害は、偶然な事故ではないため支払対象外です。');
+  else add('免責事由','ok','該当する免責事由はありません。');
+
+  // 5 補償範囲 / 6 支払基準
+  let isQuake = c==='quake';
+  const quakeFire = (c==='fire'||c==='explosion') && S.qQuakeFire==='y';
+  if(quakeFire) isQuake = true;
+
+  if(c==='wear'){
+    add('補償範囲','na','経年劣化はどの補償にも当たりません。');
+  }else if(isQuake){
+    if($('cQuake').checked) add('補償範囲','ok', quakeFire ? '地震等による火災は火災保険では免責ですが、地震保険で補償されます。' : '地震保険が付帯されています。');
+    else add('補償範囲','ng', quakeFire
+      ? '地震・噴火・津波による火災は火災保険では免責で、地震保険も付帯されていません。半焼以上であれば地震火災費用保険金（保険金額の5%程度）が支払われる場合があります。'
+      : '地震・噴火・津波による損害は火災保険では補償されず、地震保険も付帯されていません。');
+  }else{
+    const on = $(cause.cov).checked;
+    add('補償範囲', on?'ok':'ng', on ? `「${cause.name}」の補償が付帯されています。` : `「${cause.name}」の補償が付帯されていません。`);
+  }
+
+  // 原因別の支払基準
+  const crit = (s,d)=>add('支払基準',s,d);
+  if(c==='fire'||c==='explosion'){ if(S.qQuakeFire==='') crit('warn','地震等との因果関係が未確認です。地震後の火災は消防の出火原因調査を確認します。'); else if(S.qQuakeFire==='n') crit('ok','地震等によらない火災・破裂爆発です。'); }
+  if(c==='wind'){ if(S.qWindExt==='y') crit('ok','風・雹・雪による外部の破損が確認できます。');
+    else if(S.qWindExt==='n') crit('ng','建物外部に破損がない吹込み・雨漏りは、風災の対象外です（経年による雨漏りとして扱われます）。');
+    else crit('warn','外部の破損の有無を現地調査で確認する必要があります。'); }
+  if(c==='flood'){ const v=S.qFlood; if(v==='none') crit('ng','床上浸水・地盤面から45cm超・損害30%以上のいずれにも当たらず、水災の支払基準を満たしません。');
+    else if(v) crit('ok','水災の支払基準を満たしています（'+({floor:'床上浸水','45':'地盤面から45cm超の浸水','30':'損害30%以上'})[v]+'）。');
+    else crit('warn','浸水の高さ・損害割合を確認する必要があります。'); }
+  if(c==='water'){ if(S.qWaterSelf==='y') crit('ng','給排水設備そのものの修理費は水濡れ補償の対象外です。水が漏れて生じた床・壁・家財の損害が対象です。');
+    else if(S.qWaterSelf==='n') crit('ok','漏水によって生じた建物・家財の損害です。');
+    else crit('warn','損害が設備自体か、漏水による周囲の損害かを確認する必要があります。'); }
+  if(c==='impact'){ if(S.qImpactCar==='y') crit('ng','契約者・被保険者が運転する車両による衝突は、多くの約款で対象外です（自動車保険で対応）。');
+    else if(S.qImpactCar==='n') crit('ok','第三者の車両・飛来物などによる損害です。');
+    else crit('warn','衝突した物・車両の運転者を確認する必要があります。'); }
+  if(c==='theft'){ if(S.qPolice==='y') crit('ok','警察への被害届が提出済みです。');
+    else if(S.qPolice==='n') crit('warn','警察への被害届が必要です。届出がないと支払われません。');
+    else crit('warn','被害届の提出状況を確認する必要があります。'); }
+  if(c==='breakage'){ if(S.qCosmetic==='y') crit('ng','機能に支障のない外観上の損傷は、破損・汚損補償の対象外です。');
+    else if(S.qCosmetic==='n') crit('ok','機能に支障のある破損・汚損です。');
+    else crit('warn','機能への支障の有無を確認する必要があります。'); }
+  if(isQuake && $('cQuake').checked){ const g=S.qQuakeGrade; if(g==='none') crit('ng','一部損の基準に満たないため、地震保険は支払われません。');
+    else if(g) crit('ok','損害区分は'+QUAKE_RATE[g][1].split(' ')[0]+'の見込みです。');
+    else crit('warn','損害区分（全損〜一部損）の認定が必要です。'); }
+
+  // 7 自己負担額と支払額
+  const loss = num('loss'), ded = num('deduct'), sum = num('sumIns');
+  let pay = null, calc = '';
+  if(isQuake){
+    const g = S.qQuakeGrade, qs = num('quakeSum');
+    if($('cQuake').checked && g && g!=='none'){
+      pay = qs*QUAKE_RATE[g][0]; calc = `地震保険金額 ${man(qs)} × ${QUAKE_RATE[g][1]}`;
+      add('支払額の算定', qs>0?'ok':'warn', qs>0 ? '地震保険は損害区分に応じた定率で支払われ、免責金額はありません。' : '地震保険金額を入力してください。');
+    }else add('支払額の算定','na','支払額は算定しません。');
+  }else if(c==='wear'){
+    add('支払額の算定','na','支払額は算定しません。');
+  }else if(loss<=0){
+    add('支払額の算定','warn','損害額を入力してください。');
+  }else if(c==='wind' && $('windMode').value==='franchise'){
+    if(loss<20){ add('支払額の算定','ng','損害額が20万円未満のため、風災の支払条件（20万円以上）を満たしません。'); pay=0; }
+    else { pay=Math.min(loss, sum||loss); calc=`損害額 ${man(loss)}（20万円以上のため全額）`; add('支払額の算定','ok','損害額が20万円以上のため、損害額の全額が対象です。'); }
+  }else if(loss<=ded){
+    add('支払額の算定','ng',`損害額 ${man(loss)} が免責金額 ${man(ded)} 以下のため、支払額は0円です。`); pay=0;
+  }else{
+    pay = loss-ded; calc = `損害額 ${man(loss)} − 免責金額 ${man(ded)}`;
+    if(sum>0 && pay>sum){ pay=sum; calc+=`（保険金額 ${man(sum)} が上限）`; }
+    add('支払額の算定','ok','免責金額を差し引いた額が支払対象です。');
+  }
+
+  const hasNg = checks.some(x=>x.s==='ng'), hasWarn = checks.some(x=>x.s==='warn');
+  const verdict = hasNg ? 'ng' : hasWarn ? 'warn' : 'ok';
+  return {verdict, checks, pay, calc, isQuake};
+}
+
+const LABEL = {ok:'有責',ng:'無責',warn:'要確認',na:'—'};
+const PILL = {ok:'適合',ng:'不適合',warn:'要確認',na:'対象外'};
+let lastVerdict = null;
+
+function update(){
+  readSub();
+  const r = judge();
+  const st = $('stamp');
+  st.textContent = LABEL[r.verdict]; st.className = 'stamp ' + r.verdict;
+  if(lastVerdict && lastVerdict!==r.verdict){ void st.offsetWidth; st.classList.add('pop'); }
+  lastVerdict = r.verdict;
+  const firstNg = r.checks.find(x=>x.s==='ng');
+  $('vText').textContent = r.verdict==='ok' ? (r.isQuake?'地震保険の支払対象です':'保険金の支払対象です')
+    : r.verdict==='ng' ? `「${firstNg.t}」で支払対象外になります`
+    : '追加の確認が必要です';
+  const showPay = r.verdict!=='ng' && r.pay!=null;
+  $('pay').hidden = !showPay;
+  if(showPay){ $('payV').textContent = man(r.pay); $('payCalc').textContent = r.calc + (r.verdict==='warn'?'（確認事項が解決した場合）':''); }
+  $('trace').innerHTML = r.checks.map(x=>`<li><span class="pill ${x.s}">${PILL[x.s]}</span><span class="t">${x.t}</span><span class="d">${x.d}</span></li>`).join('');
+  $('quakeSumWrap').hidden = !$('cQuake').checked;
+}
+
+// 事例
+const today = new Date(); const iso = d=>d.toISOString().slice(0,10);
+const BASE = {pStart:'2025-04-01',pEnd:'2030-04-01',tBuilding:true,tContents:true,cWind:true,cFlood:false,cWater:true,cImpact:true,cRiot:true,cTheft:true,cBreak:false,cQuake:false,
+  sumIns:2000,deduct:5,windMode:'deduct',quakeSum:1000,claimDate:iso(today),exIntent:false,exWear:false,exWar:false};
+const SAMPLES = [
+  {name:'台風で屋根瓦が飛散', v:{accDate:'2026-09-20',object:'building',cause:'wind',loss:45}, s:{qWindExt:'y'}},
+  {name:'古い屋根からの雨漏り', v:{accDate:'2026-10-02',object:'building',cause:'wind',loss:30,exWear:true}, s:{qWindExt:'n'}},
+  {name:'豪雨で床下浸水', v:{accDate:'2026-07-10',object:'building',cause:'flood',loss:80,cFlood:true}, s:{qFlood:'none'}},
+  {name:'子どもがテレビを倒した', v:{accDate:'2026-10-15',object:'contents',cause:'breakage',loss:12}, s:{qCosmetic:'n'}},
+  {name:'空き巣被害', v:{accDate:'2026-10-28',object:'contents',cause:'theft',loss:25}, s:{qPolice:''}},
+  {name:'地震で外壁にひび', v:{accDate:'2026-08-03',object:'building',cause:'quake',loss:120,cQuake:true}, s:{qQuakeGrade:'partial'}}
+];
+function load(sm){
+  const v = Object.assign({}, BASE, sm.v);
+  for(const [k,val] of Object.entries(v)){ const el=$(k); if(!el) continue; if(el.type==='checkbox') el.checked=val; else el.value=val; }
+  subState = Object.assign({}, sm.s);
+  renderSubQ(); update();
+}
+SAMPLES.forEach(sm=>{ const b=document.createElement('button'); b.type='button'; b.className='chip'; b.textContent=sm.name; b.onclick=()=>load(sm); $('samples').appendChild(b); });
+
+$('f').addEventListener('change', e=>{ if(e.target.id==='cause') renderSubQ(); update(); });
+$('f').addEventListener('input', e=>{ if(e.target.id!=='cause') update(); });
+$('f').addEventListener('submit', e=>e.preventDefault());
+
+load(SAMPLES[0]);
+</script>
